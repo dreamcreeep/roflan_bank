@@ -1,9 +1,25 @@
 package util
 
 import (
+	"fmt"
 	"math/rand"
 	"strings"
 )
+
+const (
+	USD = "USD"
+	EUR = "EUR"
+	CAD = "CAD"
+)
+
+// IsSupportedCurrency возвращает true, если валюта поддерживается
+func IsSupportedCurrency(currency string) bool {
+	switch currency {
+	case USD, EUR, CAD:
+		return true
+	}
+	return false
+}
 
 // RandomInt генерирует случайное целое число в диапазоне [min, max]
 func RandomInt(min, max int64) int64 {
@@ -42,4 +58,8 @@ func RandomCurrency() string {
 	currencies := []string{"EUR", "USD", "CAD"}
 	n := len(currencies)
 	return currencies[rand.Intn(n)]
+}
+
+func RandomEmail() string {
+	return fmt.Sprintf("%s@email.com", RandomString(6))
 }
