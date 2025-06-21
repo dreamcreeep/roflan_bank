@@ -1,34 +1,46 @@
-postgres:
-	docker run --name postgres17 -p 5432:5432 -e POSTGRES_USER=root -e POSTGRES_PASSWORD=secret -d postgres:17.4-alpine
+.DEFAULT_GOAL := help
 
-createdb:
-	docker exec -it postgres17 createdb --username=root --owner=root simple_bank
+# ==============================================================================
+# Docker-окружение
+# ==============================================================================
 
-dropdb:
-	docker exec -it postgres17 dropdb simple_bank
+up: ## Запустить все сервисы в Docker
+	docker-compose up -d
 
-migrateup:
-	migrate -path db/migration -database "postgresql://root:secret@localhost:5432/simple_bank?sslmode=disable" -verbose up
+down: ## Остановить все сервисы и удалить тома
+	docker-compose down -v
 
-migratedown:
-	migrate -path db/migration -database "postgresql://root:secret@localhost:5432/simple_bank?sslmode=disable" -verbose down
+build: ## Пересобрать Docker образы
+	docker-compose build --no-cache
 
-migrateup1:
-	migrate -path db/migration -database "postgresql://root:secret@localhost:5432/simple_bank?sslmode=disable" -verbose up 1
+logs: ## Показать логи всех сервисов
+	docker-compose logs -f
 
-migratedown1:
-	migrate -path db/migration -database "postgresql://root:secret@localhost:5432/simple_bank?sslmode=disable" -verbose down 1
+# ==============================================================================
+# Миграции базы данных (выполняются в Docker)
+# ==============================================================================
 
-sqlc:
+migrateup: ## Применить все доступные миграции
+	docker-compose run --rm migrate up
+
+migratedown: ## Откатить последнюю примененную миграцию
+	docker-compose run --rm migrate down
+
+# ==============================================================================
+# Утилиты для разработки
+# ==============================================================================
+
+sqlc: ## Сгенерировать Go код из SQL запросов
 	sqlc generate
 
-test:
+test: ## Запустить Go тесты
 	go test -v -cover ./...
 
-server:
-	go run main.go
-    
-mock:
-	mockgen -source=db/sqlc/store.go -package mockdb -destination db/mock/store.go
+# ==============================================================================
+# Справка
+# ==============================================================================
 
-.PHONY: postgres createdb dropdb migrateup migratedown sqlc test server mock migrateup1 migratedown1
+.PHONY: help up down build logs migrateup migratedown sqlc test
+
+help:
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
