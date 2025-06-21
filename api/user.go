@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"time"
 
+	"log/slog"
+
 	db "github.com/dreamcreeep/roflan_bank/db/sqlc"
 	"github.com/dreamcreeep/roflan_bank/db/util"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"go.uber.org/zap"
 )
 
 type createUserRequest struct {
@@ -56,21 +57,21 @@ func (server *Server) createUser(ctx *gin.Context) {
 	var req createUserRequest
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		server.logger.Error("Failed to bind create user request", zap.Error(err))
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		server.logger.Error("failed to bind create user request", slog.Any("error", err))
 		return
 	}
 
 	server.logger.Info("Creating new user",
-		zap.String("username", req.Username),
-		zap.String("email", req.Email),
-		zap.String("client_ip", ctx.ClientIP()),
+		slog.String("username", req.Username),
+		slog.String("email", req.Email),
+		slog.String("client_ip", ctx.ClientIP()),
 	)
 
 	hashedPassword, err := util.HashPassword(req.Password)
 	if err != nil {
-		server.logger.Error("Failed to hash password", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		server.logger.Error("failed to hash password", slog.Any("error", err))
 		return
 	}
 
@@ -86,65 +87,49 @@ func (server *Server) createUser(ctx *gin.Context) {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Code.Name() {
 			case "unique_violation":
-				server.logger.Warn("User creation failed - duplicate username/email",
-					zap.String("username", req.Username),
-					zap.String("email", req.Email),
-					zap.Error(err),
-				)
+				server.logger.Warn("cannot create user with duplicate username", "error", err)
 				ctx.JSON(http.StatusForbidden, errorResponse(err))
 				return
 			}
 		}
-		server.logger.Error("Failed to create user in database", zap.Error(err))
+		server.logger.Error("failed to create user", "error", err)
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
 
-	server.logger.Info("User created successfully",
-		zap.String("username", user.Username),
-		zap.String("email", user.Email),
-	)
-
-	resp := newUserResponse(user)
-	ctx.JSON(http.StatusOK, resp)
+	rsp := newUserResponse(user)
+	server.logger.Info("user created successfully", slog.String("username", user.Username))
+	ctx.JSON(http.StatusOK, rsp)
 }
 
 func (server *Server) loginUser(ctx *gin.Context) {
 	var req loginUserRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		server.logger.Error("Failed to bind login request", zap.Error(err))
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 
 	server.logger.Info("User login attempt",
-		zap.String("username", req.Username),
-		zap.String("client_ip", ctx.ClientIP()),
-		zap.String("user_agent", ctx.GetHeader("User-Agent")),
+		slog.String("username", req.Username),
+		slog.String("client_ip", ctx.ClientIP()),
+		slog.String("user_agent", ctx.GetHeader("User-Agent")),
 	)
 
 	user, err := server.store.GetUser(ctx, req.Username)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			server.logger.Warn("Login failed - user not found",
-				zap.String("username", req.Username),
-				zap.String("client_ip", ctx.ClientIP()),
-			)
 			ctx.JSON(http.StatusNotFound, errorResponse(err))
 			return
 		}
-		server.logger.Error("Failed to get user from database", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		server.logger.Error("failed to get user", slog.Any("error", err))
 		return
 	}
 
 	err = util.CheckPassword(req.Password, user.HashedPassword)
 	if err != nil {
-		server.logger.Warn("Login failed - invalid password",
-			zap.String("username", req.Username),
-			zap.String("client_ip", ctx.ClientIP()),
-		)
 		ctx.JSON(http.StatusUnauthorized, errorResponse(err))
+		server.logger.Warn("incorrect password for user", slog.String("username", req.Username))
 		return
 	}
 
@@ -153,8 +138,8 @@ func (server *Server) loginUser(ctx *gin.Context) {
 		server.config.AccessTokenDuration,
 	)
 	if err != nil {
-		server.logger.Error("Failed to create access token", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		server.logger.Error("failed to create access token", slog.Any("error", err))
 		return
 	}
 
@@ -163,8 +148,8 @@ func (server *Server) loginUser(ctx *gin.Context) {
 		server.config.RefreshTokenDuration,
 	)
 	if err != nil {
-		server.logger.Error("Failed to create refresh token", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		server.logger.Error("failed to create refresh token", slog.Any("error", err))
 		return
 	}
 
@@ -172,23 +157,16 @@ func (server *Server) loginUser(ctx *gin.Context) {
 		ID:           refreshPayload.ID,
 		Username:     user.Username,
 		RefreshToken: refreshToken,
-		UserAgent:    ctx.GetHeader("User-Agent"),
+		UserAgent:    ctx.Request.UserAgent(),
 		ClientIp:     ctx.ClientIP(),
 		IsBlocked:    false,
 		ExpiresAt:    refreshPayload.ExpiredAt,
 	})
-
 	if err != nil {
-		server.logger.Error("Failed to create session", zap.Error(err))
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		server.logger.Error("failed to create session", slog.Any("error", err))
 		return
 	}
-
-	server.logger.Info("User logged in successfully",
-		zap.String("username", user.Username),
-		zap.String("session_id", session.ID.String()),
-		zap.String("client_ip", ctx.ClientIP()),
-	)
 
 	rsp := loginUserResponse{
 		SessionID:             session.ID,
@@ -200,4 +178,5 @@ func (server *Server) loginUser(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, rsp)
+	server.logger.Info("user logged in successfully", slog.String("username", user.Username))
 }
