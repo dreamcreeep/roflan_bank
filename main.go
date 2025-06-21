@@ -3,20 +3,32 @@ package main
 import (
 	"database/sql"
 	"log"
+	"net"
 	"os"
 	"time"
 
 	"github.com/dreamcreeep/roflan_bank/api"
 	db "github.com/dreamcreeep/roflan_bank/db/sqlc"
 	"github.com/dreamcreeep/roflan_bank/db/util"
+	"github.com/dreamcreeep/roflan_bank/gapi"
+	"github.com/dreamcreeep/roflan_bank/pb"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Error loading .env file, using environment variables from system")
+	}
+
 	config := util.Config{
-		DBDriver:      os.Getenv("DB_DRIVER"),
-		DBSource:      os.Getenv("DB_SOURCE"),
-		ServerAddress: os.Getenv("SERVER_ADDRESS"),
+		DBDriver:          os.Getenv("DB_DRIVER"),
+		DBSource:          os.Getenv("DB_SOURCE"),
+		HTTPServerAddress: os.Getenv("HTTP_SERVER_ADDRESS"),
+		GRPCServerAddress: os.Getenv("GRPC_SERVER_ADDRESS"),
 	}
 
 	// Эти переменные требуют парсинга
@@ -39,12 +51,43 @@ func main() {
 	}
 
 	store := db.NewStore(conn)
+
+	runGrpcServer(config, store)
+
+}
+
+func runGrpcServer(config util.Config, store db.Store) {
+	server, err := gapi.NewServer(config, store)
+	if err != nil {
+		log.Fatal("cannot create server:", err)
+	}
+
+	grpcServer := grpc.NewServer()
+
+	pb.RegisterSimpleBankServer(grpcServer, server)
+
+	reflection.Register(grpcServer)
+
+	listener, err := net.Listen("tcp", config.GRPCServerAddress)
+	if err != nil {
+		log.Fatal("cannot create listener")
+	}
+
+	log.Printf("start gRPC server at %s", listener.Addr().String())
+	err = grpcServer.Serve(listener)
+	if err != nil {
+		log.Fatal("cannot start gRPC server")
+	}
+
+}
+
+func runGinServer(config util.Config, store db.Store) {
 	server, err := api.NewServer(config, store)
 	if err != nil {
 		log.Fatal("cannot create server:", err)
 	}
 
-	err = server.Start(config.ServerAddress)
+	err = server.Start(config.HTTPServerAddress)
 	if err != nil {
 		log.Fatal("cannot start server:", err)
 	}

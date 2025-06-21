@@ -10,8 +10,9 @@ type Config struct {
 	DBSource string `mapstructure:"DB_SOURCE"`
 
 	// Server Configuration
-	ServerAddress string `mapstructure:"SERVER_ADDRESS"`
-	Environment   string `mapstructure:"ENVIRONMENT"`
+	HTTPServerAddress string `mapstructure:"HTTP_SERVER_ADDRESS"`
+	GRPCServerAddress string `mapstructure:"GRPC_SERVER_ADDRESS"`
+	Environment       string `mapstructure:"ENVIRONMENT"`
 
 	// JWT Configuration
 	TokenSymmetricKey    string        `mapstructure:"TOKEN_SYMMETRIC_KEY"`
