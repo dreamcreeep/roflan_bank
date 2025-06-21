@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"log/slog"
+
 	db "github.com/dreamcreeep/roflan_bank/db/sqlc"
 	"github.com/dreamcreeep/roflan_bank/db/util"
 	"github.com/dreamcreeep/roflan_bank/token"
@@ -19,23 +21,29 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// Server serves HTTP requests for our banking service.
 type Server struct {
 	config     util.Config
 	store      db.Store
 	tokenMaker token.Maker
 	router     *gin.Engine
+	logger     *slog.Logger
 }
 
+// NewServer creates a new HTTP server and set up routing.
 func NewServer(config util.Config, store db.Store) (*Server, error) {
 	tokenMaker, err := token.NewPasetoMaker(config.TokenSymmetricKey)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create token maker: %w", err)
 	}
 
+	logger := util.NewLogger(config.Environment, config.LogFormat, config.LogLevel)
+
 	server := &Server{
 		config:     config,
 		store:      store,
 		tokenMaker: tokenMaker,
+		logger:     logger,
 	}
 
 	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
@@ -48,10 +56,18 @@ func NewServer(config util.Config, store db.Store) (*Server, error) {
 }
 
 func (server *Server) setupRouter() {
-	router := gin.Default()
+	router := gin.New() // Используем gin.New() вместо gin.Default()
+
+	// Добавляем middleware для логирования и восстановления
+	router.Use(LoggerMiddleware(server.logger))
+	router.Use(RecoveryMiddleware(server.logger))
+
+	// Health check endpoint
+	router.GET("/health", server.healthCheck)
 
 	router.POST("/users", server.createUser)
 	router.POST("/users/login", server.loginUser)
+	router.POST("/tokens/renew_access", server.renewAccessToken)
 
 	authRoutes := router.Group("/").Use(authMiddleware(server.tokenMaker))
 	authRoutes.POST("/accounts", server.createAccount)
@@ -112,4 +128,12 @@ func (server *Server) validAccount(ctx *gin.Context, accountID int64, currency s
 	}
 
 	return account, true
+}
+
+// healthCheck - endpoint для проверки состояния сервиса
+func (server *Server) healthCheck(ctx *gin.Context) {
+	server.logger.Info("Health check requested",
+		slog.String("client_ip", ctx.ClientIP()),
+		slog.String("user_agent", ctx.GetHeader("User-Agent")),
+	)
 }

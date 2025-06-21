@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"log/slog"
+
+	"github.com/dreamcreeep/roflan_bank/db/util"
 	"github.com/dreamcreeep/roflan_bank/token"
 	"github.com/gin-gonic/gin"
 )
@@ -48,5 +52,37 @@ func authMiddleware(tokenMaker token.Maker) gin.HandlerFunc {
 
 		ctx.Set(authorizationPayloadKey, payload)
 		ctx.Next()
+	}
+}
+
+// LoggerMiddleware создает middleware для логирования запросов
+func LoggerMiddleware(logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		duration := time.Since(start)
+
+		util.LogRequest(
+			logger,
+			c.Request.Method,
+			c.Request.URL.Path,
+			c.ClientIP(),
+			c.Request.UserAgent(),
+			c.Writer.Status(),
+			duration,
+		)
+	}
+}
+
+// RecoveryMiddleware создает middleware для восстановления после паник
+func RecoveryMiddleware(logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if err := recover(); err != nil {
+				logger.Error("panic recovered", slog.Any("error", err))
+				c.AbortWithStatus(http.StatusInternalServerError)
+			}
+		}()
+		c.Next()
 	}
 }
