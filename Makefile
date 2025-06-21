@@ -49,7 +49,7 @@ proto:
 	proto/*.proto
 
 evans:
-	evans --host localhost --port 9090 -r repl
+	evans --path ./proto --proto service_roflan_bank.proto --host localhost --port 9090
 
 .PHONY: help up down build logs migrateup migratedown sqlc test proto server evans
 
