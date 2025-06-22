@@ -2,12 +2,14 @@ package gapi
 
 import (
 	"context"
+	"time"
 
 	db "github.com/dreamcreeep/roflan_bank/db/sqlc"
 	"github.com/dreamcreeep/roflan_bank/db/util"
 	"github.com/dreamcreeep/roflan_bank/pb"
 	"github.com/dreamcreeep/roflan_bank/val"
 	"github.com/dreamcreeep/roflan_bank/worker"
+	"github.com/hibiken/asynq"
 	"github.com/lib/pq"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -47,7 +49,13 @@ func (server *Server) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 		Username: user.Username,
 	}
 
-	err = server.taskDistributor.DistributeTaskSendVerifyEmail(ctx, taskPayload, server.logger)
+	opts := []asynq.Option{
+		asynq.MaxRetry(10),
+		asynq.ProcessIn(10 * time.Second),
+		asynq.Queue(worker.QueueCritical),
+	}
+
+	err = server.taskDistributor.DistributeTaskSendVerifyEmail(ctx, taskPayload, server.logger, opts...)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to distribute task to send verify email: %s", err)
 	}

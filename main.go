@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/joho/godotenv"
 
 	db "github.com/dreamcreeep/roflan_bank/db/sqlc"
 	"github.com/dreamcreeep/roflan_bank/db/util"
@@ -25,33 +24,32 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		slog.Info("Could not load .env file, using environment variables")
-	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-
 	config := util.Config{
 		DBDriver:          os.Getenv("DB_DRIVER"),
-		DBSource:          os.Getenv("DB_SOURCE"),
+		DBSource:          os.Getenv("DBSOURCE"),
 		HTTPServerAddress: os.Getenv("HTTP_SERVER_ADDRESS"),
 		GRPCServerAddress: os.Getenv("GRPC_SERVER_ADDRESS"),
+		RedisAddress:      os.Getenv("REDIS_ADDRESS"),
+		TokenSymmetricKey: os.Getenv("TOKEN_SYMMETRIC_KEY"),
+		Environment:       os.Getenv("ENVIRONMENT"),
+		LogLevel:          os.Getenv("LOG_LEVEL"),
+		LogFormat:         os.Getenv("LOG_FORMAT"),
 	}
 
-	// Эти переменные требуют парсинга
+	logger := util.NewLogger(config.Environment, config.LogFormat, config.LogLevel)
+
 	accessTokenDuration, err := time.ParseDuration(os.Getenv("ACCESS_TOKEN_DURATION"))
 	if err != nil {
 		logger.Error("invalid access token duration", slog.Any("error", err))
 		os.Exit(1)
 	}
+
 	refreshTokenDuration, err := time.ParseDuration(os.Getenv("REFRESH_TOKEN_DURATION"))
 	if err != nil {
 		logger.Error("invalid refresh token duration", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	config.TokenSymmetricKey = os.Getenv("TOKEN_SYMMETRIC_KEY")
 	config.AccessTokenDuration = accessTokenDuration
 	config.RefreshTokenDuration = refreshTokenDuration
 
@@ -88,7 +86,7 @@ func runTaskProcessor(redisOpt asynq.RedisClientOpt, logger *slog.Logger, store 
 }
 
 func runGatewayServer(config util.Config, store db.Store, taskDistributor worker.TaskDistributor, logger *slog.Logger) {
-	server, err := gapi.NewServer(config, store, taskDistributor)
+	server, err := gapi.NewServer(config, store, taskDistributor, logger)
 	if err != nil {
 		logger.Error("cannot create server", slog.Any("error", err))
 		os.Exit(1)
@@ -133,7 +131,7 @@ func runGatewayServer(config util.Config, store db.Store, taskDistributor worker
 }
 
 func runGrpcServer(config util.Config, store db.Store, taskDistributor worker.TaskDistributor, logger *slog.Logger) {
-	server, err := gapi.NewServer(config, store, taskDistributor)
+	server, err := gapi.NewServer(config, store, taskDistributor, logger)
 	if err != nil {
 		logger.Error("cannot create server", slog.Any("error", err))
 		os.Exit(1)

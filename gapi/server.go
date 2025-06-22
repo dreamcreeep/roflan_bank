@@ -23,13 +23,11 @@ type Server struct {
 }
 
 // NewServer создаёт новый HTTP сервер и настраивает маршрутизацию.
-func NewServer(config util.Config, store db.Store, taskDistributor worker.TaskDistributor) (*Server, error) {
+func NewServer(config util.Config, store db.Store, taskDistributor worker.TaskDistributor, logger *slog.Logger) (*Server, error) {
 	tokenMaker, err := token.NewPasetoMaker(config.TokenSymmetricKey)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create token maker: %w", err)
 	}
-
-	logger := util.NewLogger(config.Environment, config.LogFormat, config.LogLevel)
 
 	server := &Server{
 		config:          config,
