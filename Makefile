@@ -6,16 +6,13 @@ up: ## Запустить все сервисы в Docker
 	docker-compose up -d
 
 down: ## Остановить все сервисы и удалить тома
-	docker-compose down -v
+	docker-compose down 
 
 build: ## Пересобрать Docker образы
 	docker-compose build --no-cache
 
 logs: ## Показать логи всех сервисов
 	docker-compose logs -f
-
-server: ## Запустить сервер
-	go run main.go
 
 # ==============================================================================
 # Миграции базы данных (выполняются в Docker)
@@ -55,4 +52,4 @@ proto:
 redis:
 	docker run --name redis -p 6379:6379 -d redis:latest
 
-.PHONY: help up down build logs migrateup migratedown sqlc test proto server mock redis
+.PHONY: help up down build logs migrateup migratedown sqlc test proto mock redis

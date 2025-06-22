@@ -23,7 +23,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func main() {
+func setConfig() util.Config {
 	config := util.Config{
 		DBDriver:          os.Getenv("DB_DRIVER"),
 		DBSource:          os.Getenv("DBSOURCE"),
@@ -35,6 +35,12 @@ func main() {
 		LogLevel:          os.Getenv("LOG_LEVEL"),
 		LogFormat:         os.Getenv("LOG_FORMAT"),
 	}
+
+	return config
+}
+
+func main() {
+	config := setConfig()
 
 	logger := util.NewLogger(config.Environment, config.LogFormat, config.LogLevel)
 
