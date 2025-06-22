@@ -3,13 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"time"
 
-	"github.com/dreamcreeep/roflan_bank/api"
 	db "github.com/dreamcreeep/roflan_bank/db/sqlc"
 	"github.com/dreamcreeep/roflan_bank/db/util"
 	"github.com/dreamcreeep/roflan_bank/gapi"
@@ -22,6 +21,8 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
 	config := util.Config{
 		DBDriver:          os.Getenv("DB_DRIVER"),
 		DBSource:          os.Getenv("DB_SOURCE"),
@@ -32,11 +33,13 @@ func main() {
 	// Эти переменные требуют парсинга
 	accessTokenDuration, err := time.ParseDuration(os.Getenv("ACCESS_TOKEN_DURATION"))
 	if err != nil {
-		log.Fatalf("invalid access token duration: %v", err)
+		logger.Error("invalid access token duration", slog.Any("error", err))
+		os.Exit(1)
 	}
 	refreshTokenDuration, err := time.ParseDuration(os.Getenv("REFRESH_TOKEN_DURATION"))
 	if err != nil {
-		log.Fatalf("invalid refresh token duration: %v", err)
+		logger.Error("invalid refresh token duration", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	config.TokenSymmetricKey = os.Getenv("TOKEN_SYMMETRIC_KEY")
@@ -45,20 +48,21 @@ func main() {
 
 	conn, err := sql.Open(config.DBDriver, config.DBSource)
 	if err != nil {
-		log.Fatal("cannot connect to db:", err)
+		logger.Error("cannot connect to db", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	store := db.NewStore(conn)
 
-	go runGatewayServer(config, store)
-	runGrpcServer(config, store)
-
+	go runGatewayServer(config, store, logger)
+	runGrpcServer(config, store, logger)
 }
 
-func runGatewayServer(config util.Config, store db.Store) {
+func runGatewayServer(config util.Config, store db.Store, logger *slog.Logger) {
 	server, err := gapi.NewServer(config, store)
 	if err != nil {
-		log.Fatal("cannot create server:", err)
+		logger.Error("cannot create server", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	jsonOption := runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
@@ -77,7 +81,8 @@ func runGatewayServer(config util.Config, store db.Store) {
 
 	err = pb.RegisterSimpleBankHandlerServer(ctx, grpcMux, server)
 	if err != nil {
-		log.Fatal("cannot register handler server:", err)
+		logger.Error("cannot register handler server", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	mux := http.NewServeMux()
@@ -85,24 +90,27 @@ func runGatewayServer(config util.Config, store db.Store) {
 
 	listener, err := net.Listen("tcp", config.HTTPServerAddress)
 	if err != nil {
-		log.Fatal("cannot create listener")
+		logger.Error("cannot create listener", slog.Any("error", err))
+		os.Exit(1)
 	}
 
-	log.Printf("start HTTP gateway server at %s", listener.Addr().String())
+	logger.Info("start HTTP gateway server", slog.String("address", listener.Addr().String()))
 
 	err = http.Serve(listener, mux)
 	if err != nil {
-		log.Fatal("cannot start HTTP gateway server")
+		logger.Error("cannot start HTTP gateway server", slog.Any("error", err))
+		os.Exit(1)
 	}
 }
 
-func runGrpcServer(config util.Config, store db.Store) {
+func runGrpcServer(config util.Config, store db.Store, logger *slog.Logger) {
 	server, err := gapi.NewServer(config, store)
 	if err != nil {
-		log.Fatal("cannot create server:", err)
+		logger.Error("cannot create server", slog.Any("error", err))
+		os.Exit(1)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(server.GrpcLogger))
 
 	pb.RegisterSimpleBankServer(grpcServer, server)
 
@@ -110,25 +118,14 @@ func runGrpcServer(config util.Config, store db.Store) {
 
 	listener, err := net.Listen("tcp", config.GRPCServerAddress)
 	if err != nil {
-		log.Fatal("cannot create listener")
+		logger.Error("cannot create listener", slog.Any("error", err))
+		os.Exit(1)
 	}
 
-	log.Printf("start gRPC server at %s", listener.Addr().String())
+	logger.Info("start gRPC server", slog.String("address", listener.Addr().String()))
 	err = grpcServer.Serve(listener)
 	if err != nil {
-		log.Fatal("cannot start gRPC server")
-	}
-
-}
-
-func runGinServer(config util.Config, store db.Store) {
-	server, err := api.NewServer(config, store)
-	if err != nil {
-		log.Fatal("cannot create server:", err)
-	}
-
-	err = server.Start(config.HTTPServerAddress)
-	if err != nil {
-		log.Fatal("cannot start server:", err)
+		logger.Error("cannot start gRPC server", slog.Any("error", err))
+		os.Exit(1)
 	}
 }

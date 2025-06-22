@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -88,7 +87,8 @@ func (server *Server) Start(address string) error {
 	// Запускаем сервер в горутине
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %s\n", err)
+			server.logger.Error("listen error", slog.Any("error", err))
+			os.Exit(1)
 		}
 	}()
 
@@ -96,16 +96,17 @@ func (server *Server) Start(address string) error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	server.logger.Info("Shutting down server...")
 
 	// Даем 5 секунд на завершение текущих запросов
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
+		server.logger.Error("Server forced to shutdown", slog.Any("error", err))
+		os.Exit(1)
 	}
 
-	log.Println("Server exiting")
+	server.logger.Info("Server exiting")
 	return nil
 }
 

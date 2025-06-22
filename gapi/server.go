@@ -2,6 +2,7 @@ package gapi
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/dreamcreeep/roflan_bank/pb"
 
@@ -16,6 +17,7 @@ type Server struct {
 	config     util.Config
 	store      db.Store
 	tokenMaker token.Maker
+	logger     *slog.Logger
 }
 
 // NewServer создаёт новый HTTP сервер и настраивает маршрутизацию.
@@ -25,10 +27,13 @@ func NewServer(config util.Config, store db.Store) (*Server, error) {
 		return nil, fmt.Errorf("cannot create token maker: %w", err)
 	}
 
+	logger := util.NewLogger(config.Environment, config.LogFormat, config.LogLevel)
+
 	server := &Server{
 		config:     config,
 		store:      store,
 		tokenMaker: tokenMaker,
+		logger:     logger,
 	}
 
 	return server, nil
