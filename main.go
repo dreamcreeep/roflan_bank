@@ -9,10 +9,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/hibiken/asynq"
+	"github.com/joho/godotenv"
+
 	db "github.com/dreamcreeep/roflan_bank/db/sqlc"
 	"github.com/dreamcreeep/roflan_bank/db/util"
 	"github.com/dreamcreeep/roflan_bank/gapi"
 	"github.com/dreamcreeep/roflan_bank/pb"
+	"github.com/dreamcreeep/roflan_bank/worker"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	_ "github.com/lib/pq"
 	"google.golang.org/grpc"
@@ -21,6 +25,11 @@ import (
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		slog.Info("Could not load .env file, using environment variables")
+	}
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	config := util.Config{
@@ -54,12 +63,32 @@ func main() {
 
 	store := db.NewStore(conn)
 
-	go runGatewayServer(config, store, logger)
-	runGrpcServer(config, store, logger)
+	redisOpt := asynq.RedisClientOpt{
+		Addr: config.RedisAddress,
+	}
+
+	taskDistributor := worker.NewRedisTaskDistributor(redisOpt)
+
+	go runTaskProcessor(redisOpt, logger, store)
+
+	go runGatewayServer(config, store, taskDistributor, logger)
+	runGrpcServer(config, store, taskDistributor, logger)
 }
 
-func runGatewayServer(config util.Config, store db.Store, logger *slog.Logger) {
-	server, err := gapi.NewServer(config, store)
+func runTaskProcessor(redisOpt asynq.RedisClientOpt, logger *slog.Logger, store db.Store) {
+	taskProcessor := worker.NewRedisTaskProcessor(redisOpt, logger, store)
+	slog.Info("start task processor")
+
+	err := taskProcessor.Start()
+	if err != nil {
+		logger.Error("cannot start task processor", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+}
+
+func runGatewayServer(config util.Config, store db.Store, taskDistributor worker.TaskDistributor, logger *slog.Logger) {
+	server, err := gapi.NewServer(config, store, taskDistributor)
 	if err != nil {
 		logger.Error("cannot create server", slog.Any("error", err))
 		os.Exit(1)
@@ -103,8 +132,8 @@ func runGatewayServer(config util.Config, store db.Store, logger *slog.Logger) {
 	}
 }
 
-func runGrpcServer(config util.Config, store db.Store, logger *slog.Logger) {
-	server, err := gapi.NewServer(config, store)
+func runGrpcServer(config util.Config, store db.Store, taskDistributor worker.TaskDistributor, logger *slog.Logger) {
+	server, err := gapi.NewServer(config, store, taskDistributor)
 	if err != nil {
 		logger.Error("cannot create server", slog.Any("error", err))
 		os.Exit(1)

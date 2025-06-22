@@ -1,5 +1,3 @@
-.DEFAULT_GOAL := help
-
 # ==============================================================================
 # Docker-окружение
 # ==============================================================================
@@ -54,10 +52,7 @@ proto:
 	--openapiv2_out=doc/swagger \
     proto/*.proto
 
-evans:
-	evans --path ./proto --proto service_roflan_bank.proto --host localhost --port 9090
+redis:
+	docker run --name redis -p 6379:6379 -d redis:latest
 
-.PHONY: help up down build logs migrateup migratedown sqlc test proto server evans mock
-
-help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+.PHONY: help up down build logs migrateup migratedown sqlc test proto server mock redis
