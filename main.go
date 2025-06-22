@@ -15,7 +15,6 @@ import (
 	"github.com/dreamcreeep/roflan_bank/gapi"
 	"github.com/dreamcreeep/roflan_bank/pb"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -23,11 +22,6 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("Error loading .env file, using environment variables from system")
-	}
-
 	config := util.Config{
 		DBDriver:          os.Getenv("DB_DRIVER"),
 		DBSource:          os.Getenv("DB_SOURCE"),

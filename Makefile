@@ -36,6 +36,9 @@ migratedown: ## Откатить последнюю примененную ми�
 sqlc: ## Сгенерировать Go код из SQL запросов
 	sqlc generate
 
+mock: ## Сгенерировать mock для интерфейса Store
+	mockgen -source=db/sqlc/store.go -package mockdb -destination db/mock/store.go
+
 test: ## Запустить Go тесты
 	go test -v -cover ./...
 
@@ -44,15 +47,17 @@ test: ## Запустить Go тесты
 # ==============================================================================
 proto:
 	rm -f pb/*.go
+	rm -f doc/swagger/*.swagger.json
 	protoc --proto_path=proto --go_out=pb --go_opt=paths=source_relative \
     --go-grpc_out=pb --go-grpc_opt=paths=source_relative \
     --grpc-gateway_out=pb --grpc-gateway_opt=paths=source_relative \
+	--openapiv2_out=doc/swagger \
     proto/*.proto
 
 evans:
 	evans --path ./proto --proto service_roflan_bank.proto --host localhost --port 9090
 
-.PHONY: help up down build logs migrateup migratedown sqlc test proto server evans
+.PHONY: help up down build logs migrateup migratedown sqlc test proto server evans mock
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
